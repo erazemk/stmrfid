@@ -65,8 +65,10 @@ void StartMFRC522Task(void *argument) {
 	/* Recognized card ID */
 	uint8_t CardID[4];
 	uint8_t type;
+	uint8_t lcd_msg[100];
 	char *result;
 	int status;
+	uint16_t line = 1;
 
 	printf("Started MFRC522 task\r\n");
 
@@ -75,6 +77,17 @@ void StartMFRC522Task(void *argument) {
 		if (status == RFID_OK) {
 			MFRC522_PrettyPrint((unsigned char*) CardID, sizeof(CardID), &result);
 			printf("Found tag: %s\r\n", result);
+
+			// Clear the display and start at line 1 again
+			if (line >= 19) {
+				BSP_LCD_Clear(LCD_COLOR_WHITE);
+				line = 1;
+			} else {
+				line++;
+			}
+
+			snprintf(lcd_msg, sizeof(lcd_msg), "Found tag: %s", result);
+			BSP_LCD_DisplayStringAtLine(line, lcd_msg);
 
 			MFRC522_PrettyPrint((unsigned char*) &type, 1, &result);
 			printf("Type is: %s\r\n", result);
