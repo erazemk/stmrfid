@@ -1,22 +1,31 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "mfrc522.h"
-
 #include <stdio.h>
 
 osThreadId_t mfrc522TaskHandle;
 const osThreadAttr_t mfrc522Task_attributes = { .name = "mfrc522Task", .stack_size =
         128 * 4, .priority = (osPriority_t) osPriorityNormal, };
 
+osThreadId_t servoTaskHandle;
+const osThreadAttr_t servoTask_attributes = { .name = "servoTask", .stack_size = 128
+        * 4, .priority = (osPriority_t) osPriorityNormal, };
+
 UART_HandleTypeDef UART_InitStruct;
 GPIO_InitTypeDef GPIO_InitStruct;
 SPI_HandleTypeDef SPI_InitStruct;
+TIM_HandleTypeDef TIM_InitStruct = { 0 };
+
+uint8_t AllowedCardID[4] = { 0x4D, 0xAF, 0x84, 0x59 };
+uint8_t allowed = 0; // For communication with the servo motor
 
 void SystemClock_Config(void);
 void StartMFRC522Task(void *argument);
+void StartServoTask(void *argument);
 void LCD_Init(void);
 void UART_Init(void);
 void SPI_Init(void);
+void Servo_Init(void);
 
 /* Redirect printf and similar functions to UART */
 int _write(int fd, char *ptr, int len) {
@@ -40,18 +49,21 @@ int main(void) {
 	/* Initialize all configured peripherals */
 	BSP_LED_Init(LED_GREEN);
 	BSP_LED_Init(LED_RED);
+	BSP_LED_On(LED_RED);
 
 	UART_Init();
-	printf("Finished UART initialization\r\n");
+	printf("-------------------------------\r\n");
 
 	LCD_Init();
 	SPI_Init();
 	MFRC522_Init();
+	Servo_Init();
 
 	/* Init scheduler */
 	osKernelInitialize();
 
 	mfrc522TaskHandle = osThreadNew(StartMFRC522Task, NULL, &mfrc522Task_attributes);
+	servoTaskHandle = osThreadNew(StartServoTask, NULL, &servoTask_attributes);
 
 	/* Start scheduler */
 	osKernelStart();
@@ -65,10 +77,11 @@ void StartMFRC522Task(void *argument) {
 	/* Recognized card ID */
 	uint8_t CardID[4];
 	uint8_t type;
-	uint8_t lcd_msg[100];
 	char *result;
 	int status;
-	uint16_t line = 1;
+	uint16_t line = 0;
+	uint8_t lcd_msg_1[50];
+	uint8_t lcd_msg_2[50];
 
 	printf("Started MFRC522 task\r\n");
 
@@ -79,18 +92,35 @@ void StartMFRC522Task(void *argument) {
 			printf("Found tag: %s\r\n", result);
 
 			// Clear the display and start at line 1 again
-			if (line >= 19) {
+			if (line >= 20) {
 				BSP_LCD_Clear(LCD_COLOR_WHITE);
-				line = 1;
-			} else {
-				line++;
+				line = 0;
 			}
 
-			snprintf(lcd_msg, sizeof(lcd_msg), "Found tag: %s", result);
-			BSP_LCD_DisplayStringAtLine(line, lcd_msg);
+			snprintf(lcd_msg_1, sizeof(lcd_msg_1), "Found tag: %s", result);
+			BSP_LCD_DisplayStringAtLine(line, lcd_msg_1);
+			line++;
 
 			MFRC522_PrettyPrint((unsigned char*) &type, 1, &result);
 			printf("Type is: %s\r\n", result);
+
+			// Check if card is allowed
+			if (MFRC522_CompareIDs(CardID, AllowedCardID) == RFID_OK) {
+				printf("Known ID, access is allowed\r\n");
+
+				snprintf(lcd_msg_2, sizeof(lcd_msg_2), "Access is allowed");
+				BSP_LCD_DisplayStringAtLine(line, lcd_msg_2);
+				BSP_LED_On(LED_GREEN);
+				BSP_LED_Off(LED_RED);
+				allowed = 1;
+				line++;
+			} else {
+				printf("Unknown ID, access is denied\r\n");
+
+				snprintf(lcd_msg_2, sizeof(lcd_msg_2), "Access is denied");
+				BSP_LCD_DisplayStringAtLine(line, lcd_msg_2);
+				line++;
+			}
 		} else {
 			if (status == RFID_ERR) {
 				printf("Error\r\n");
@@ -98,6 +128,25 @@ void StartMFRC522Task(void *argument) {
 		}
 
 		osDelay(1);
+	}
+}
+
+void StartServoTask(void *argument) {
+	for (;;) {
+		if (allowed) {
+			__HAL_TIM_SET_COMPARE(&TIM_InitStruct, TIM_CHANNEL_1, 1);
+			osDelay(3000);
+			__HAL_TIM_SET_COMPARE(&TIM_InitStruct, TIM_CHANNEL_1, 15);
+			osDelay(200);
+			__HAL_TIM_SET_COMPARE(&TIM_InitStruct, TIM_CHANNEL_1, 0);
+			allowed = 0;
+
+			// Clear LEDs
+			BSP_LED_Off(LED_GREEN);
+			BSP_LED_On(LED_RED);
+		}
+
+		osDelay(20);
 	}
 }
 
@@ -206,6 +255,35 @@ void SPI_Init(void) {
 	} else {
 		printf("Finished SPI initialization\r\n");
 	}
+}
+
+void Servo_Init(void) {
+	__HAL_RCC_TIM11_CLK_ENABLE();
+
+	TIM_InitStruct.Instance = TIM11;
+	TIM_InitStruct.Init.CounterMode = TIM_COUNTERMODE_UP;
+	TIM_InitStruct.Init.Period = 100 - 1;
+	TIM_InitStruct.Init.Prescaler = 19200 - 1;
+	HAL_TIM_PWM_Init(&TIM_InitStruct);
+
+	TIM_OC_InitTypeDef TIM_OC_InitStruct = { 0 };
+	TIM_OC_InitStruct.OCMode = TIM_OCMODE_PWM1;
+	TIM_OC_InitStruct.OCPolarity = TIM_OCPOLARITY_HIGH;
+	TIM_OC_InitStruct.Pulse = 7.5;
+	HAL_TIM_PWM_ConfigChannel(&TIM_InitStruct, &TIM_OC_InitStruct, TIM_CHANNEL_1);
+
+	__HAL_RCC_GPIOF_CLK_ENABLE();
+
+	GPIO_InitTypeDef Servo_InitStruct = { 0 };
+	Servo_InitStruct.Pin = GPIO_PIN_7;
+	Servo_InitStruct.Mode = GPIO_MODE_AF_PP;
+	Servo_InitStruct.Pull = GPIO_NOPULL;
+	Servo_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	Servo_InitStruct.Alternate = GPIO_AF3_TIM11;
+	HAL_GPIO_Init(GPIOF, &Servo_InitStruct);
+
+	HAL_TIM_PWM_Start(&TIM_InitStruct, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COMPARE(&TIM_InitStruct, TIM_CHANNEL_1, 0);
 }
 
 /* If LEDs flash it means UART has failed to initialize */
