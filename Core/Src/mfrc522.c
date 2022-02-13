@@ -84,7 +84,7 @@ MFRC522_Status_t MFRC522_CheckCard(uint8_t *id, uint8_t *type) {
 }
 
 /* Check if two RFID card IDs match */
-MFRC522_Status_t MFRC522_Compare(uint8_t *id1, uint8_t *id2) {
+MFRC522_Status_t MFRC522_CompareIDs(uint8_t *id1, uint8_t *id2) {
 	for (uint8_t i = 0; i < 5; i++) {
 		if (id1[i] != id2[i]) {
 			return RFID_ERR;

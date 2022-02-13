@@ -30,7 +30,7 @@ typedef enum {
 extern void MFRC522_Init(void);
 extern uint8_t MFRC522_Version();
 extern MFRC522_Status_t MFRC522_CheckCard(uint8_t *id, uint8_t *type);
-extern MFRC522_Status_t MFRC522_Compare(uint8_t *id1, uint8_t *id2);
+extern MFRC522_Status_t MFRC522_CompareIDs(uint8_t *id1, uint8_t *id2);
 extern void MFRC522_PrettyPrint(unsigned char *in, unsigned int size, char **out);
 
 /*
