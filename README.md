@@ -1,10 +1,10 @@
-# STM32F7 RFID RC522
+# STM32F769 RFID Door Lock
 
 An STM32F7xx-compatible RFID-RC522 project and library using FreeRTOS (CMSISv2)
-as a base, UART for serial communication / debugging and SPI for communication
-with the reader.
+as a base, UART for serial communication / debugging, SPI for communication
+with the reader and a servo motor for simulating a door lock.
 
-## Running the project yourself
+## Running the project
 
 1. Have STM32CubeIDE installed
 2. Clone the project: `git clone https://github.com/erazemk/stm32f7-mfrc522.git`
@@ -24,6 +24,14 @@ The following is the default pinout, but you can change it in the code if needed
 |     GND    |     GND     |
 |     RST    |     3.3V    |
 |    3.3V    |     3.3V    |
+
+## Connecting the Servo motor
+
+| SG90 | STM32F769NI |
+|:----:|:-----------:|
+| VCC  |     5V      |
+| DATA |     D6      |
+| GND  |     GND     |
 
 ## Debugging using UART (Serial Port)
 
